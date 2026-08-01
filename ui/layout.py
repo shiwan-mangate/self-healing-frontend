@@ -42,7 +42,7 @@ class BackendStatus:
             )
             self._label = ui.label("Checking…").classes(
                 "text-xs shr-muted hidden sm:block"
-            )
+            ).style("white-space: nowrap;")
 
     def _render(self, color: str, text: str, pulse: bool) -> None:
         if self._dot is None or self._label is None:
@@ -86,6 +86,10 @@ class BackendStatus:
                 self.set_waking()
             else:
                 self.set_offline()
+            return False
+        except Exception:
+            logger.exception("Unexpected liveness probe failure")
+            self.set_offline()
             return False
 
         if report.alive:
@@ -134,19 +138,23 @@ def _nav_button(label: str, route: str, icon: str, active: bool) -> None:
         "click", lambda r=route: ui.navigate.to(r)
     ):
         ui.icon(icon, size="20px").style(
-            f"color: {theme.PRIMARY}" if active else "color: var(--shr-text-muted)"
+            (f"color: {theme.PRIMARY};" if active else "color: var(--shr-text-muted);")
+            + " flex-shrink: 0;"
         )
         ui.label(label).classes("text-sm").style(
-            f"color: {theme.PRIMARY}; font-weight: 600;"
-            if active
-            else "color: var(--shr-text); font-weight: 500;"
+            (
+                f"color: {theme.PRIMARY}; font-weight: 600;"
+                if active
+                else "color: var(--shr-text); font-weight: 500;"
+            )
+            + " white-space: nowrap;"
         )
 
 
 def _build_drawer(current_route: str) -> ui.left_drawer:
     drawer = (
-        ui.left_drawer(top_corner=False, bottom_corner=True)
-        .props("width=248 bordered show-if-above")
+        ui.left_drawer(value=True, top_corner=False, bottom_corner=True)
+        .props(f"width={theme.DRAWER_WIDTH} bordered behavior=desktop")
         .classes("p-3 gap-1")
         .style("overflow-x: hidden;")
     )
@@ -171,10 +179,11 @@ def _build_drawer(current_route: str) -> ui.left_drawer:
                     "flex-shrink: 0;"
                 )
                 ui.label(settings.api_host).classes(
-                    "shr-mono text-xs shr-muted ellipsis"
-                ).style("min-width: 0; overflow: hidden; text-overflow: ellipsis;").tooltip(
-                    settings.api_base_url
-                )
+                    "shr-mono text-xs shr-muted shr-flex-min"
+                ).style(
+                    "flex: 1 1 auto; min-width: 0; overflow: hidden; "
+                    "text-overflow: ellipsis; white-space: nowrap;"
+                ).tooltip(settings.api_base_url)
 
             with ui.row().classes("items-center gap-2 no-wrap w-full shr-fill"):
                 ui.icon("api", size="16px").classes("shr-muted").style(
@@ -184,7 +193,9 @@ def _build_drawer(current_route: str) -> ui.left_drawer:
                     "API reference",
                     f"{settings.api_base_url}{Endpoint.DOCS}",
                     new_tab=True,
-                ).classes("text-xs no-underline").style(f"color: {theme.PRIMARY}")
+                ).classes("text-xs no-underline").style(
+                    f"color: {theme.PRIMARY}; white-space: nowrap;"
+                )
 
     return drawer
 
@@ -193,21 +204,22 @@ def _build_header(drawer: ui.left_drawer, status: BackendStatus) -> None:
     with ui.header(elevated=False).classes(
         "items-center px-3 gap-3 no-wrap shr-fill"
     ).style(f"height: {theme.HEADER_HEIGHT}px; min-height: {theme.HEADER_HEIGHT}px;"):
-        # Removed "lg:hidden" so it's always visible and usable to toggle the drawer
         ui.button(icon="menu", on_click=drawer.toggle).props(
             "flat dense round"
-        ).style("flex-shrink: 0;")
+        ).style("flex-shrink: 0;").tooltip("Toggle navigation")
 
         with ui.row().classes(
             "items-center gap-2 no-wrap cursor-pointer"
         ).style("flex-shrink: 0;").on("click", lambda: ui.navigate.to(Route.CHAT)):
-            ui.icon("autorenew", size="24px").style(f"color: {theme.PRIMARY}")
+            ui.icon("autorenew", size="24px").style(
+                f"color: {theme.PRIMARY}; flex-shrink: 0;"
+            )
             with ui.column().classes("gap-0"):
                 ui.label(APP_NAME).classes(
                     "text-sm font-semibold leading-tight"
                 ).style("white-space: nowrap;")
                 ui.label(APP_TAGLINE).classes(
-                    "text-xs shr-muted leading-tight hidden md:block"
+                    "text-xs shr-muted leading-tight hidden lg:block"
                 ).style("white-space: nowrap;")
 
         ui.space()
@@ -258,9 +270,7 @@ def page_shell(
 
     resolved_width = max_width or f"{theme.CONTENT_MAX_WIDTH}px"
 
-    with ui.column().classes("w-full items-center gap-0 shr-fill").style(
-        "padding: 0; margin: 0;"
-    ):
+    with ui.column().classes("w-full items-center gap-0 shr-fill"):
         container_classes = "w-full gap-4 shr-fade-in shr-fill"
         if padded:
             container_classes += " p-4 md:p-6"
@@ -306,7 +316,9 @@ def section_header(
             ui.icon(icon, size="26px").style(
                 f"color: {theme.PRIMARY}; flex-shrink: 0;"
             )
-        with ui.column().classes("gap-0 shr-flex-min").style("flex: 1 1 auto;"):
+        with ui.column().classes("gap-0 shr-flex-min").style(
+            "flex: 1 1 auto; min-width: 0;"
+        ):
             ui.label(title).classes("text-lg font-semibold leading-tight")
             if subtitle:
                 ui.label(subtitle).classes("text-sm shr-muted leading-snug")
