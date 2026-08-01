@@ -33,6 +33,7 @@ LIGHT_TEXT_MUTED: Final[str] = "#5b6675"
 
 HEADER_HEIGHT: Final[int] = 52
 FOOTER_HEIGHT: Final[int] = 30
+DRAWER_WIDTH: Final[int] = 232
 SIDEBAR_WIDTH: Final[int] = 260
 CONTENT_MAX_WIDTH: Final[int] = 1180
 CHAT_MAX_WIDTH: Final[int] = 880
@@ -123,24 +124,23 @@ body {
     gap: 0 !important;
     width: 100%;
     max-width: 100%;
-    overflow-x: hidden;
 }
 
 .q-page-container {
-    width: 100%;
     max-width: 100%;
-    overflow-x: hidden;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
 }
 
 .q-page {
-    width: 100%;
     max-width: 100%;
     overflow-x: hidden;
 }
 
-.q-layout { overflow-x: hidden; }
+.q-layout {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+.q-drawer__content { overflow-x: hidden; }
 
 .shr-fill {
     width: 100%;
@@ -193,7 +193,7 @@ body {
 
 .shr-session-panel { display: flex !important; }
 
-@media (max-width: 767px) {
+@media (max-width: 1023px) {
     .shr-session-panel { display: none !important; }
 }
 

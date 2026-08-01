@@ -146,7 +146,7 @@ def _nav_button(label: str, route: str, icon: str, active: bool) -> None:
 def _build_drawer(current_route: str) -> ui.left_drawer:
     drawer = (
         ui.left_drawer(top_corner=False, bottom_corner=True)
-        .props("width=248 bordered")
+        .props("width=248 bordered show-if-above")
         .classes("p-3 gap-1")
         .style("overflow-x: hidden;")
     )
@@ -193,9 +193,10 @@ def _build_header(drawer: ui.left_drawer, status: BackendStatus) -> None:
     with ui.header(elevated=False).classes(
         "items-center px-3 gap-3 no-wrap shr-fill"
     ).style(f"height: {theme.HEADER_HEIGHT}px; min-height: {theme.HEADER_HEIGHT}px;"):
+        # Removed "lg:hidden" so it's always visible and usable to toggle the drawer
         ui.button(icon="menu", on_click=drawer.toggle).props(
             "flat dense round"
-        ).classes("lg:hidden").style("flex-shrink: 0;")
+        ).style("flex-shrink: 0;")
 
         with ui.row().classes(
             "items-center gap-2 no-wrap cursor-pointer"
