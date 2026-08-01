@@ -7,7 +7,7 @@ from typing import Final
 from nicegui import app, ui
 
 from app.config import settings
-from app.constants import APP_NAME, APP_TAGLINE, Route
+from app.constants import APP_NAME, APP_TAGLINE, APP_VERSION, Route
 from api.client import api_client
 
 
@@ -42,6 +42,16 @@ except ImportError as exc:
     logger.warning("Page modules not yet available (%s). Serving placeholder.", exc)
 
 
+@app.get("/healthz")
+def _healthz() -> dict[str, str]:
+    return {
+        "status": "ok",
+        "service": "selfhealing-rag-frontend",
+        "version": APP_VERSION,
+        "pages_loaded": str(PAGES_READY),
+    }
+
+
 if not PAGES_READY:
 
     @ui.page(Route.CHAT)
@@ -50,12 +60,14 @@ if not PAGES_READY:
 
         theme.apply()
 
-        with ui.column().classes("w-full h-screen items-center justify-center gap-4 p-8"):
+        with ui.column().classes(
+            "w-full h-screen items-center justify-center gap-4 p-8"
+        ):
             ui.icon("construction", size="56px").style("color: #f0a848")
             ui.label(APP_NAME).classes("text-2xl font-semibold")
             ui.label(APP_TAGLINE).classes("shr-muted text-sm")
 
-            with ui.card().classes("shr-surface p-5 mt-4 max-w-lg"):
+            with ui.card().classes("shr-surface p-5 mt-4").style("max-width: 32rem;"):
                 ui.label("Scaffold verified").classes("font-semibold mb-2")
                 ui.label(
                     "Configuration, models, HTTP client, storage and theme are all "
@@ -63,8 +75,12 @@ if not PAGES_READY:
                 ).classes("shr-muted text-sm")
 
                 ui.separator().classes("my-3")
-                ui.label(f"Backend: {settings.api_host}").classes("shr-mono text-xs shr-muted")
-                ui.label(f"Warm-up: {settings.should_warm_up}").classes("shr-mono text-xs shr-muted")
+                ui.label(f"Backend: {settings.api_host}").classes(
+                    "shr-mono text-xs shr-muted"
+                )
+                ui.label(f"Warm-up: {settings.should_warm_up}").classes(
+                    "shr-mono text-xs shr-muted"
+                )
 
             async def probe() -> None:
                 spinner.visible = True
@@ -80,7 +96,9 @@ if not PAGES_READY:
                     spinner.visible = False
 
             with ui.row().classes("items-center gap-3 mt-2"):
-                ui.button("Test backend connection", icon="cable", on_click=probe).props("unelevated")
+                ui.button(
+                    "Test backend connection", icon="cable", on_click=probe
+                ).props("unelevated")
                 spinner = ui.spinner(size="sm")
                 spinner.visible = False
 
@@ -96,7 +114,10 @@ async def _on_startup() -> None:
     if settings.should_warm_up:
         try:
             awake = await api_client.warm_up()
-            logger.info("Warm-up ping: %s", "backend awake" if awake else "backend still waking")
+            logger.info(
+                "Warm-up ping: %s",
+                "backend awake" if awake else "backend still waking",
+            )
         except Exception as exc:
             logger.warning("Warm-up ping failed: %s", exc)
 
@@ -113,7 +134,7 @@ ui.run(
     title=APP_NAME,
     favicon="🔁",
     storage_secret=settings.storage_secret,
-    dark=None,
+    dark=True,
     reload=settings.debug,
     show=False,
     reconnect_timeout=10.0,

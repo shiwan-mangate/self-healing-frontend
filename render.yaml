@@ -10,7 +10,7 @@ services:
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: python main.py
 
-    healthCheckPath: /
+    healthCheckPath: /healthz
 
     envVars:
       - key: PYTHON_VERSION
