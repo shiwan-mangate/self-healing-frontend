@@ -1,0 +1,59 @@
+services:
+  - type: web
+    name: selfhealing-rag-frontend
+    runtime: python
+    plan: free
+    region: oregon
+    branch: main
+    autoDeploy: true
+
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: python main.py
+
+    healthCheckPath: /
+
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+
+      - key: API_BASE_URL
+        value: https://self-healing-rag-api-v3.onrender.com
+
+      - key: STORAGE_SECRET
+        generateValue: true
+
+      - key: API_TIMEOUT_CHAT
+        value: "180"
+
+      - key: API_TIMEOUT_INGEST
+        value: "120"
+
+      - key: API_TIMEOUT_READ
+        value: "30"
+
+      - key: API_TIMEOUT_HEALTH
+        value: "10"
+
+      - key: COLD_START_ESTIMATE
+        value: "90"
+
+      - key: WARMUP_ON_LOAD
+        value: "true"
+
+      - key: EVAL_FETCH_RETRIES
+        value: "1"
+
+      - key: EVAL_RETRY_DELAY
+        value: "1.5"
+
+      - key: HEALTH_POLL_INTERVAL
+        value: "15"
+
+      - key: MAX_UPLOAD_MB
+        value: "25"
+
+      - key: DEBUG
+        value: "false"
+
+      - key: PYTHONUNBUFFERED
+        value: "1"
