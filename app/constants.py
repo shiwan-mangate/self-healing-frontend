@@ -263,7 +263,7 @@ MAX_USER_ID_LENGTH: Final[int] = 100
 MAX_SESSION_TITLE_LENGTH: Final[int] = 60
 MAX_STORED_SESSIONS: Final[int] = 50
 MAX_INGESTION_LOG_ENTRIES: Final[int] = 100
-
+MAX_QUERY_LOG_ENTRIES: Final[int] = 30
 
 HEADER_REQUEST_ID: Final[str] = "X-Request-ID"
 REQUEST_ID_PREFIX: Final[str] = "ui"
@@ -275,6 +275,7 @@ class StorageKey:
     INGESTION_LOG: Final[str] = "ingestion_log"
     DARK_MODE: Final[str] = "dark_mode"
     USER_ID: Final[str] = "user_id"
+    QUERY_LOG: Final[str] = "query_log"
 
 
 DEFAULT_SESSION_TITLE: Final[str] = "New conversation"
