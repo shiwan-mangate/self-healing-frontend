@@ -8,13 +8,16 @@ from nicegui import ui
 from api.client import api_client
 from api.errors import ApiError, ErrorCode
 from api.models import EvaluationResponse
-from app.constants import Route
+from app.constants import Route, score_color, status_meta
+from app.state import QueryRecord
+from services import chat_service
 from ui import layout, theme
 from ui.components.confidence_gauge import confidence_breakdown, score_bar
 from ui.components.metrics_row import grounding_pill, risk_pill
-from ui.components.notify import copy_to_clipboard, error_card
+from ui.components.notify import confirm, copy_to_clipboard, error_card, info
 from ui.components.ragas_card import ragas_card
 from ui.components.skeleton import card_skeleton, metric_skeleton
+from utils.formatters import format_percent, format_relative, truncate
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +27,7 @@ class EvaluationPage:
         self.query_id = query_id.strip()
         self.input: Optional[ui.input] = None
         self.results_slot: Optional[ui.element] = None
+        self.recent_slot: Optional[ui.element] = None
         self.loading = False
 
     def build(self) -> None:
@@ -36,6 +40,9 @@ class EvaluationPage:
             )
 
             self._build_lookup()
+
+            self.recent_slot = ui.column().classes("w-full gap-0 shr-fill")
+            self._render_recent()
 
             self.results_slot = ui.column().classes("w-full gap-4 shr-fill")
 
@@ -70,18 +77,143 @@ class EvaluationPage:
                 "icon under an answer to jump straight here."
             ).classes("text-xs shr-muted leading-snug")
 
+    def _render_recent(self) -> None:
+        if self.recent_slot is None:
+            return
+
+        self.recent_slot.clear()
+        records = chat_service.recent_queries()
+
+        if not records:
+            return
+
+        with self.recent_slot:
+            with ui.column().classes("w-full gap-2 p-4 shr-surface shr-fill"):
+                with ui.row().classes("w-full items-center gap-2 no-wrap shr-fill"):
+                    ui.icon("history", size="18px").style(
+                        f"color: {theme.PRIMARY}; flex-shrink: 0;"
+                    )
+                    ui.label("Recent questions").classes("text-sm font-semibold")
+                    ui.space()
+                    ui.label(f"{len(records)} recorded").classes(
+                        "text-xs shr-muted"
+                    ).style("white-space: nowrap; flex-shrink: 0;")
+                    ui.button(
+                        icon="delete_sweep", on_click=self._handle_clear_recent
+                    ).props("flat dense round size=sm").classes("shr-muted").style(
+                        "flex-shrink: 0;"
+                    ).tooltip("Clear this list")
+
+                ui.label(
+                    "Questions asked from this browser. Click one to load its metrics."
+                ).classes("text-xs shr-muted")
+
+                with ui.column().classes("w-full gap-1.5 pt-1 shr-fill"):
+                    for record in records:
+                        self._recent_row(record)
+
+    def _recent_row(self, record: QueryRecord) -> None:
+        meta = status_meta(record.status)
+        active = record.query_id == self.query_id
+        tone = score_color(record.confidence)
+
+        background = f"{theme.PRIMARY}14" if active else "transparent"
+        border = (
+            f"1px solid {theme.PRIMARY}44"
+            if active
+            else "1px solid var(--shr-border)"
+        )
+
+        row = (
+            ui.row()
+            .classes(
+                "w-full items-center gap-3 no-wrap px-3 py-2 shr-clickable shr-fill"
+            )
+            .style(
+                f"background: {background}; border: {border}; border-radius: 8px;"
+            )
+        )
+
+        with row:
+            ui.icon(meta.icon, size="16px").style(
+                f"color: {meta.color}; flex-shrink: 0;"
+            ).tooltip(meta.label)
+
+            with ui.column().classes("gap-0 shr-flex-min").style(
+                "flex: 1 1 auto; min-width: 0;"
+            ):
+                ui.label(truncate(record.question, 72) or record.query_id).classes(
+                    "text-sm"
+                ).style(
+                    "overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                ).tooltip(record.question or record.query_id)
+
+                with ui.row().classes("items-center gap-2 no-wrap"):
+                    ui.label(record.query_id).classes(
+                        "shr-mono text-xs shr-muted"
+                    ).style("opacity: 0.65; white-space: nowrap;")
+                    ui.label("·").classes("text-xs shr-muted").style("opacity: 0.4;")
+                    ui.label(format_relative(record.asked_dt)).classes(
+                        "text-xs shr-muted"
+                    ).style("opacity: 0.7; white-space: nowrap;")
+
+            if record.recovery_used or record.retry_count:
+                ui.icon("healing", size="14px").style(
+                    f"color: {theme.SECONDARY}; flex-shrink: 0;"
+                ).tooltip("Self-healing was engaged for this answer")
+
+            ui.label(format_percent(record.confidence)).classes(
+                "shr-mono text-xs font-semibold"
+            ).style(f"color: {tone}; flex-shrink: 0; white-space: nowrap;")
+
+        row.on("click", lambda qid=record.query_id: self._select_recent(qid))
+
+    async def _select_recent(self, query_id: str) -> None:
+        if self.loading:
+            return
+        self.query_id = query_id
+        if self.input is not None:
+            self.input.set_value(query_id)
+        self._render_recent()
+        await self._load()
+
+    async def _handle_clear_recent(self) -> None:
+        records = chat_service.recent_queries()
+        if not records:
+            return
+
+        approved = await confirm(
+            f"Clear all {len(records)} recorded questions from this browser? "
+            "The evaluations remain on the server.",
+            title="Clear recent questions",
+            confirm_label="Clear",
+            danger=True,
+        )
+        if not approved:
+            return
+
+        chat_service.clear_query_log()
+        self._render_recent()
+        info("Recent questions cleared")
+
     def _render_placeholder(self) -> None:
         if self.results_slot is None:
             return
 
         self.results_slot.clear()
+        has_recent = bool(chat_service.recent_queries())
+
         with self.results_slot:
             with ui.column().classes("w-full shr-surface shr-fill"):
                 layout.empty_state(
                     "fact_check",
                     "No evaluation loaded",
-                    "Enter a query ID above, or open an answer's evaluation from "
-                    "the chat page.",
+                    (
+                        "Pick a question above, or paste a query ID."
+                        if has_recent
+                        else "Ask a question in the chat first, then open its "
+                        "evaluation from the icon under the answer."
+                    ),
                 )
 
     def _render_loading(self) -> None:
@@ -100,10 +232,12 @@ class EvaluationPage:
         candidate = (self.input.value or "").strip()
         if not candidate:
             self.query_id = ""
+            self._render_recent()
             self._render_placeholder()
             return
 
         self.query_id = candidate
+        self._render_recent()
         await self._load()
 
     async def _load(self) -> None:
@@ -162,10 +296,28 @@ class EvaluationPage:
         self.results_slot.clear()
 
         with self.results_slot:
+            self._render_context()
             self._render_verdict(evaluation)
             self._render_confidence(evaluation)
             ragas_card(evaluation.ragas)
             self._render_trace()
+
+    def _render_context(self) -> None:
+        record = chat_service.find_query(self.query_id)
+        if record is None or not record.question:
+            return
+
+        with ui.row().classes(
+            "w-full items-start gap-2 no-wrap px-4 py-3 shr-surface-alt shr-fill"
+        ):
+            ui.icon("help_outline", size="16px").classes("shr-muted").style(
+                "flex-shrink: 0; margin-top: 2px;"
+            )
+            with ui.column().classes("gap-0 shr-flex-min").style(
+                "flex: 1 1 auto; min-width: 0;"
+            ):
+                ui.label("Question").classes("text-xs shr-muted")
+                ui.label(record.question).classes("text-sm leading-snug")
 
     def _render_verdict(self, evaluation: EvaluationResponse) -> None:
         passed = evaluation.passed

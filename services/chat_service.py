@@ -7,8 +7,11 @@ from typing import Optional
 from api.client import api_client
 from api.errors import ApiError, ErrorCode
 from api.models import ChatResponse, ChatTurn, EvaluationResponse
+from app import state
 from app.constants import MAX_QUERY_LENGTH
+from app.state import QueryRecord
 from services import session_service
+from utils.markdown import preview
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +44,34 @@ async def _fetch_evaluation(query_id: str) -> Optional[EvaluationResponse]:
     except Exception:
         logger.exception("Unexpected failure fetching evaluation for %s", query_id)
         return None
+
+
+def _record_query(
+    response: ChatResponse,
+    question: str,
+    evaluation: Optional[EvaluationResponse],
+) -> None:
+    if not response.query_id:
+        return
+
+    confidence = (
+        evaluation.confidence.score if evaluation is not None else response.confidence
+    )
+
+    try:
+        state.append_query(
+            QueryRecord(
+                query_id=response.query_id,
+                session_id=response.session_id,
+                question=preview(question, limit=120),
+                status=response.status,
+                confidence=confidence,
+                recovery_used=response.recovery_used,
+                retry_count=response.retry_count,
+            )
+        )
+    except Exception:
+        logger.exception("Could not record query %s locally", response.query_id)
 
 
 async def ask(
@@ -76,7 +107,7 @@ async def ask(
             session_id, exc.code, exc.request_id,
         )
         return turn.with_error(_error_message(exc))
-    except Exception as exc:
+    except Exception:
         logger.exception("Unexpected query failure for session %s", session_id)
         return turn.with_error(
             "An unexpected problem occurred while contacting the backend."
@@ -90,6 +121,8 @@ async def ask(
             evaluation = await _fetch_evaluation(response.query_id)
         except asyncio.CancelledError:
             logger.info("Evaluation fetch cancelled; returning answer without metrics.")
+
+    _record_query(response, cleaned, evaluation)
 
     logger.info(
         "Query complete | query_id=%s | status=%s | retries=%d | "
@@ -132,8 +165,10 @@ def _error_message(exc: ApiError) -> str:
 
     if exc.is_validation:
         detail = exc.detail_text
-        return f"The question was rejected by the server.\n{detail}" if detail else (
-            "The question was rejected by the server."
+        return (
+            f"The question was rejected by the server.\n{detail}"
+            if detail
+            else "The question was rejected by the server."
         )
 
     return exc.message
@@ -147,7 +182,21 @@ async def refetch_evaluation(turn: ChatTurn) -> ChatTurn:
     if evaluation is None:
         return turn
 
+    _record_query(turn.response, turn.question, evaluation)
+
     return turn.with_result(turn.response, evaluation)
+
+
+def recent_queries() -> list[QueryRecord]:
+    return state.load_query_log()
+
+
+def find_query(query_id: str) -> Optional[QueryRecord]:
+    return state.find_query(query_id)
+
+
+def clear_query_log() -> None:
+    state.clear_query_log()
 
 
 class ChatController:

@@ -11,6 +11,7 @@ from nicegui import app
 from app.constants import (
     DEFAULT_SESSION_TITLE,
     MAX_INGESTION_LOG_ENTRIES,
+    MAX_QUERY_LOG_ENTRIES,
     MAX_SESSION_TITLE_LENGTH,
     MAX_STORED_SESSIONS,
     StorageKey,
@@ -163,6 +164,56 @@ class IngestionRecord:
             warnings=warnings,
             error=str(error).strip() if error else None,
             ingested_at=str(payload.get("ingested_at", "")).strip() or _now_iso(),
+        )
+
+
+@dataclass(slots=True)
+class QueryRecord:
+    query_id: str
+    session_id: str
+    question: str
+    status: str = "success"
+    confidence: float = 0.0
+    recovery_used: bool = False
+    retry_count: int = 0
+    asked_at: str = field(default_factory=_now_iso)
+
+    @property
+    def asked_dt(self) -> datetime:
+        return _parse_iso(self.asked_at)
+
+    @property
+    def is_success(self) -> bool:
+        return self.status == "success"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> Optional["QueryRecord"]:
+        query_id = str(payload.get("query_id", "")).strip()
+        if not query_id:
+            return None
+
+        try:
+            confidence = max(0.0, min(1.0, float(payload.get("confidence", 0.0))))
+        except (TypeError, ValueError):
+            confidence = 0.0
+
+        try:
+            retries = max(0, int(payload.get("retry_count", 0)))
+        except (TypeError, ValueError):
+            retries = 0
+
+        return cls(
+            query_id=query_id,
+            session_id=str(payload.get("session_id", "")).strip(),
+            question=str(payload.get("question", "")).strip(),
+            status=str(payload.get("status", "success")).strip().lower() or "success",
+            confidence=confidence,
+            recovery_used=bool(payload.get("recovery_used", False)),
+            retry_count=retries,
+            asked_at=str(payload.get("asked_at", "")).strip() or _now_iso(),
         )
 
 
@@ -325,6 +376,36 @@ def append_ingestion(record: IngestionRecord) -> None:
 
 def clear_ingestion_log() -> None:
     _write_list(StorageKey.INGESTION_LOG, [])
+
+
+def load_query_log() -> list[QueryRecord]:
+    records: list[QueryRecord] = []
+    for payload in _read_list(StorageKey.QUERY_LOG):
+        record = QueryRecord.from_dict(payload)
+        if record is not None:
+            records.append(record)
+
+    records.sort(key=lambda r: r.asked_at, reverse=True)
+    return records
+
+
+def append_query(record: QueryRecord) -> None:
+    existing = [r for r in load_query_log() if r.query_id != record.query_id]
+    existing.insert(0, record)
+    trimmed = existing[:MAX_QUERY_LOG_ENTRIES]
+    _write_list(StorageKey.QUERY_LOG, [item.to_dict() for item in trimmed])
+
+
+def find_query(query_id: str) -> Optional[QueryRecord]:
+    target = query_id.strip()
+    for record in load_query_log():
+        if record.query_id == target:
+            return record
+    return None
+
+
+def clear_query_log() -> None:
+    _write_list(StorageKey.QUERY_LOG, [])
 
 
 def get_user_id() -> str:
